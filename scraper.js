@@ -7,7 +7,8 @@ const { HttpsProxyAgent } = require('https-proxy-agent');
 const TEST_URL = "https://www.google.com";
 const TEST_TIMEOUT = 5000; // 5 seconds
 const CONCURRENT_TESTS = 20;
-// ====== ALL PROXY SOURCES ======
+
+// ====== ALL SOURCES (COMPLETE LIST) ======
 const SOURCES = [
   // APIs
   "https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http,socks4,socks5&timeout=10000&country=all&anonymity=all",
@@ -134,15 +135,7 @@ const SOURCES = [
 ];
 
 // ====== PROXY STORAGE ======
-const proxyTypes = {
-  http: new Set(),
-  https: new Set(),
-  socks4: new Set(),
-  socks5: new Set()
-};
-
-    // ====== PROXY STORAGE ======
-const workingProxies = {
+const proxies = {
   http: new Set(),
   https: new Set(),
   socks4: new Set(),
@@ -150,30 +143,14 @@ const workingProxies = {
 };
 
 // ====== CORE FUNCTIONS ======
-async function fetchProxies() {
-  const allProxies = new Set();
-  
-  for (const url of SOURCES) {
-    try {
-      const data = await new Promise(resolve => {
-        https.get(url, res => {
-          let data = '';
-          res.on('data', chunk => data += chunk);
-          res.on('end', () => resolve(data));
-        }).on('error', () => resolve(''));
-      });
-
-      // Extract proxies with protocol detection
-      const proxies = extractProxies(data, url);
-      proxies.forEach(proxy => allProxies.add(proxy));
-      
-      console.log(`✓ ${url} (${proxies.length} proxies)`);
-    } catch (e) {
-      console.log(`✗ ${url} (failed)`);
-    }
+async function fetchUrl(url) {
+  try {
+    const response = await axios.get(url, { timeout: 10000 });
+    return response.data;
+  } catch (error) {
+    console.log(`Failed to fetch ${url}: ${error.message}`);
+    return '';
   }
-  
-  return Array.from(allProxies);
 }
 
 function extractProxies(text, url) {
@@ -208,56 +185,62 @@ async function testProxy(proxy) {
         agent = new HttpsProxyAgent(`http://${ip}:${port}`);
     }
     
-    await new Promise((resolve, reject) => {
-      const req = https.get(TEST_URL, { agent, timeout: TEST_TIMEOUT }, res => {
-        res.on('data', () => {});
-        res.on('end', resolve);
-      });
-      req.on('error', reject);
-      req.on('timeout', () => {
-        req.destroy();
-        reject(new Error('Timeout'));
-      });
+    await axios.get(TEST_URL, {
+      httpAgent: agent,
+      httpsAgent: agent,
+      timeout: TEST_TIMEOUT
     });
     
     return proxy;
-  } catch (e) {
+  } catch (error) {
     return null;
   }
 }
 
-async function testAllProxies(proxies) {
-  const results = [];
-  const batchSize = Math.ceil(proxies.length / CONCURRENT_TESTS);
-  
-  for (let i = 0; i < proxies.length; i += batchSize) {
-    const batch = proxies.slice(i, i + batchSize);
-    const batchResults = await Promise.all(batch.map(testProxy));
-    results.push(...batchResults.filter(Boolean));
-    console.log(`Tested ${Math.min(i + batchSize, proxies.length)}/${proxies.length}`);
+async function processSource(url) {
+  try {
+    const data = await fetchUrl(url);
+    const extracted = extractProxies(data, url);
+    
+    // Test proxies in parallel
+    const testResults = await Promise.all(
+      extracted.map(proxy => testProxy(proxy))
+    );
+    
+    const working = testResults.filter(Boolean);
+    
+    // Store working proxies
+    working.forEach(proxy => {
+      const [ip, port, type] = proxy.split(':');
+      proxies[type].add(`${ip}:${port}`);
+    });
+    
+    console.log(`✓ ${url} (${working.length}/${extracted.length} working)`);
+  } catch (error) {
+    console.log(`✗ ${url} (failed)`);
   }
-  
-  return results;
 }
 
-function saveResults(proxies) {
+function saveResults() {
   const now = new Date();
-  const dateStr = `${now.getDate()}-${now.getMonth()+1}-${now.getFullYear()}`;
+  const dateStr = now.toISOString().split('T')[0];
+  const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, '-');
   
-  // Organize by type
-  proxies.forEach(proxy => {
-    const [ip, port, type] = proxy.split(':');
-    workingProxies[type].add(`${ip}:${port}`);
-  });
-  
-  // Save to files
+  // Create directories
   if (!fs.existsSync('proxies')) fs.mkdirSync('proxies');
   if (!fs.existsSync(`proxies/${dateStr}`)) fs.mkdirSync(`proxies/${dateStr}`);
   
-  for (const [type, list] of Object.entries(workingProxies)) {
-    const content = [...list].join('\n');
+  // Save each proxy type
+  for (const [type, proxySet] of Object.entries(proxies)) {
+    const content = [...proxySet].join('\n');
+    
+    // Save latest version
     fs.writeFileSync(`proxies/${type}.txt`, content);
-    fs.writeFileSync(`proxies/${dateStr}/${type}_${now.getHours()}.txt`, content);
+    
+    // Save archive copy
+    fs.writeFileSync(`proxies/${dateStr}/${type}_${timeStr}.txt`, content);
+    
+    console.log(`💾 Saved ${proxySet.size} working ${type.toUpperCase()} proxies`);
   }
 }
 
@@ -265,20 +248,18 @@ function saveResults(proxies) {
 (async () => {
   console.log('🚀 Starting proxy scraper');
   
-  // 1. Fetch all unique proxies
-  const uniqueProxies = await fetchProxies();
-  console.log(`🔍 Found ${uniqueProxies.length} unique proxies`);
+  // Process all sources in parallel batches
+  const batchSize = 5;
+  for (let i = 0; i < SOURCES.length; i += batchSize) {
+    const batch = SOURCES.slice(i, i + batchSize);
+    await Promise.all(batch.map(processSource));
+  }
   
-  // 2. Test all proxies
-  console.log('⚡ Testing proxies...');
-  const working = await testAllProxies(uniqueProxies);
-  console.log(`✅ Found ${working.length} working proxies`);
+  // Save final results
+  saveResults();
   
-  // 3. Save results
-  saveResults(working);
-  
-  console.log('\n💾 Saved results:');
-  for (const [type, list] of Object.entries(workingProxies)) {
-    console.log(`${type.toUpperCase()}: ${list.size} proxies`);
+  console.log('\n✅ Final Count:');
+  for (const [type, proxySet] of Object.entries(proxies)) {
+    console.log(`${type.toUpperCase()}: ${proxySet.size}`);
   }
 })();
