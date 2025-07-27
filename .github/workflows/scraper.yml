@@ -1,5 +1,6 @@
 name: Advanced Proxy Scraper
-
+- name: Run advanced proxy scraper
+  run: python main/advanced_scraper.py
 on:
   schedule:
     - cron: '0 * * * *'  # Runs every hour
