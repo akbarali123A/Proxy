@@ -6,9 +6,10 @@ const { HttpsProxyAgent } = require('https-proxy-agent');
 // ====== CONFIG ======
 const TEST_URL = "https://www.google.com";
 const TEST_TIMEOUT = 5000; // 5 seconds
+const SOURCE_TIMEOUT = 15000; // 15 seconds for sources
 const CONCURRENT_TESTS = 20;
 
-// ====== ALL SOURCES (COMPLETE LIST) ======
+// ====== ALL SOURCES ======
 const SOURCES = [
   // APIs
   "https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http,socks4,socks5&timeout=10000&country=all&anonymity=all",
@@ -135,37 +136,32 @@ const SOURCES = [
 ];
 
 // ====== PROXY STORAGE ======
-const proxies = {
+const workingProxies = {
   http: new Set(),
   https: new Set(),
   socks4: new Set(),
   socks5: new Set()
 };
 
-// ====== CORE FUNCTIONS ======
-async function fetchUrl(url) {
-  try {
-    const response = await axios.get(url, { timeout: 10000 });
-    return response.data;
-  } catch (error) {
-    console.log(`Failed to fetch ${url}: ${error.message}`);
-    return '';
+// ====== IMPROVED FETCH FUNCTION ======
+async function fetchWithRetry(url, retries = 3) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const response = await axios.get(url, {
+        timeout: SOURCE_TIMEOUT,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+      });
+      return response.data;
+    } catch (error) {
+      if (i === retries - 1) throw error;
+      await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds before retry
+    }
   }
 }
 
-function extractProxies(text, url) {
-  const proxyRegex = /(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}):(\d{2,5})/g;
-  const matches = [...text.matchAll(proxyRegex)];
-  
-  // Detect protocol from URL
-  let protocol = 'http';
-  if (url.includes('socks4')) protocol = 'socks4';
-  else if (url.includes('socks5')) protocol = 'socks5';
-  else if (url.includes('https')) protocol = 'https';
-  
-  return matches.map(match => `${match[1]}:${match[2]}:${protocol}`);
-}
-
+// ====== PROXY TESTING ======
 async function testProxy(proxy) {
   const [ip, port, protocol] = proxy.split(':');
   
@@ -197,14 +193,24 @@ async function testProxy(proxy) {
   }
 }
 
+// ====== MAIN PROCESS ======
 async function processSource(url) {
   try {
-    const data = await fetchUrl(url);
-    const extracted = extractProxies(data, url);
+    const data = await fetchWithRetry(url);
+    const proxyRegex = /(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}):(\d{2,5})/g;
+    const matches = [...data.matchAll(proxyRegex)];
+    
+    // Detect protocol from URL
+    let protocol = 'http';
+    if (url.includes('socks4')) protocol = 'socks4';
+    else if (url.includes('socks5')) protocol = 'socks5';
+    else if (url.includes('https')) protocol = 'https';
+    
+    const proxies = matches.map(match => `${match[1]}:${match[2]}:${protocol}`);
     
     // Test proxies in parallel
     const testResults = await Promise.all(
-      extracted.map(proxy => testProxy(proxy))
+      proxies.map(proxy => testProxy(proxy))
     );
     
     const working = testResults.filter(Boolean);
@@ -212,15 +218,16 @@ async function processSource(url) {
     // Store working proxies
     working.forEach(proxy => {
       const [ip, port, type] = proxy.split(':');
-      proxies[type].add(`${ip}:${port}`);
+      workingProxies[type].add(`${ip}:${port}`);
     });
     
-    console.log(`✓ ${url} (${working.length}/${extracted.length} working)`);
+    console.log(`✓ ${url} (${working.length}/${proxies.length} working)`);
   } catch (error) {
-    console.log(`✗ ${url} (failed)`);
+    console.log(`✗ ${url} (failed after retries)`);
   }
 }
 
+// ====== SAVE RESULTS ======
 function saveResults() {
   const now = new Date();
   const dateStr = now.toISOString().split('T')[0];
@@ -231,7 +238,7 @@ function saveResults() {
   if (!fs.existsSync(`proxies/${dateStr}`)) fs.mkdirSync(`proxies/${dateStr}`);
   
   // Save each proxy type
-  for (const [type, proxySet] of Object.entries(proxies)) {
+  for (const [type, proxySet] of Object.entries(workingProxies)) {
     const content = [...proxySet].join('\n');
     
     // Save latest version
@@ -248,18 +255,19 @@ function saveResults() {
 (async () => {
   console.log('🚀 Starting proxy scraper');
   
-  // Process all sources in parallel batches
+  // Process sources in batches to avoid rate limits
   const batchSize = 5;
   for (let i = 0; i < SOURCES.length; i += batchSize) {
     const batch = SOURCES.slice(i, i + batchSize);
     await Promise.all(batch.map(processSource));
+    await new Promise(resolve => setTimeout(resolve, 2000)); // Delay between batches
   }
   
   // Save final results
   saveResults();
   
   console.log('\n✅ Final Count:');
-  for (const [type, proxySet] of Object.entries(proxies)) {
+  for (const [type, proxySet] of Object.entries(workingProxies)) {
     console.log(`${type.toUpperCase()}: ${proxySet.size}`);
   }
 })();
