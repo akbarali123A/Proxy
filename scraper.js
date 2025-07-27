@@ -3,6 +3,10 @@ const axios = require('axios');
 const { SocksProxyAgent } = require('socks-proxy-agent');
 const { HttpsProxyAgent } = require('https-proxy-agent');
 
+// ====== CONFIG ======
+const TEST_URL = "https://www.google.com";
+const TEST_TIMEOUT = 5000; // 5 seconds
+const CONCURRENT_TESTS = 20;
 // ====== ALL PROXY SOURCES ======
 const SOURCES = [
   // APIs
@@ -137,126 +141,144 @@ const proxyTypes = {
   socks5: new Set()
 };
 
-// ====== MAIN FUNCTION ======
-(async () => {
-  console.log(`🚀 Starting proxy scraping from ${SOURCES.length} sources...`);
-  
-  // Scrape all sources
-  await scrapeAllSources();
-  
-  // Process results
-  removeDuplicates();
-  saveProxies();
-  
-  console.log("\n✅ Scraping complete! Results:");
-  console.log(`• HTTP: ${proxyTypes.http.size} proxies`);
-  console.log(`• HTTPS: ${proxyTypes.https.size} proxies`);
-  console.log(`• SOCKS4: ${proxyTypes.socks4.size} proxies`);
-  console.log(`• SOCKS5: ${proxyTypes.socks5.size} proxies`);
-})();
+    // ====== PROXY STORAGE ======
+const workingProxies = {
+  http: new Set(),
+  https: new Set(),
+  socks4: new Set(),
+  socks5: new Set()
+};
 
-// ====== SCRAPING FUNCTION ======
-async function scrapeAllSources() {
-  const batchSize = 5; // Process 5 sources at a time
-  for (let i = 0; i < SOURCES.length; i += batchSize) {
-    const batch = SOURCES.slice(i, i + batchSize);
-    await Promise.all(batch.map(scrapeSource));
-  }
-}
+// ====== CORE FUNCTIONS ======
+async function fetchProxies() {
+  const allProxies = new Set();
+  
+  for (const url of SOURCES) {
+    try {
+      const data = await new Promise(resolve => {
+        https.get(url, res => {
+          let data = '';
+          res.on('data', chunk => data += chunk);
+          res.on('end', () => resolve(data));
+        }).on('error', () => resolve(''));
+      });
 
-async function scrapeSource(url) {
-  try {
-    const response = await axios.get(url, { timeout: 15000 });
-    const proxies = extractProxies(response.data, url);
-    
-    proxies.forEach(proxy => {
-      const [ip, port, type] = proxy.split(':');
-      if (type === 'http') proxyTypes.http.add(`${ip}:${port}`);
-      else if (type === 'https') proxyTypes.https.add(`${ip}:${port}`);
-      else if (type === 'socks4') proxyTypes.socks4.add(`${ip}:${port}`);
-      else if (type === 'socks5') proxyTypes.socks5.add(`${ip}:${port}`);
-      else proxyTypes.http.add(`${ip}:${port}`); // Default to HTTP
-    });
-    
-    console.log(`[✔] ${url} → ${proxies.length} proxies`);
-  } catch (error) {
-    console.log(`[✖] ${url} → Error: ${error.message}`);
-  }
-}
-
-// ====== PROXY EXTRACTION ======
-function extractProxies(data, url) {
-  // Enhanced pattern to detect protocol from URL if not in proxy string
-  const proxyPattern = /(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}):(\d{2,5})(?::(http|https|socks4|socks5))?/gi;
-  const matches = [...data.matchAll(proxyPattern)];
-  
-  // Detect protocol from URL if needed
-  let urlProtocol = '';
-  if (url.includes('http.txt') || url.includes('http_proxies')) urlProtocol = 'http';
-  else if (url.includes('https.txt') || url.includes('https_proxies')) urlProtocol = 'https';
-  else if (url.includes('socks4.txt') || url.includes('socks4_proxies')) urlProtocol = 'socks4';
-  else if (url.includes('socks5.txt') || url.includes('socks5_proxies')) urlProtocol = 'socks5';
-  
-  return matches.map(match => {
-    const ip = match[1];
-    const port = match[2];
-    const type = match[3] || urlProtocol || 'http'; // Fallback to HTTP
-    return `${ip}:${port}:${type}`;
-  });
-}
-
-// ====== DUPLICATE REMOVAL ======
-function removeDuplicates() {
-  console.log("\n🧹 Removing duplicate proxies...");
-  
-  // Create IP:PORT map to eliminate duplicates
-  const uniqueMap = new Map();
-  
-  // Process all proxy types
-  for (const [type, proxies] of Object.entries(proxyTypes)) {
-    for (const proxy of proxies) {
-      const [ip, port] = proxy.split(':');
-      const key = `${ip}:${port}`;
+      // Extract proxies with protocol detection
+      const proxies = extractProxies(data, url);
+      proxies.forEach(proxy => allProxies.add(proxy));
       
-      if (!uniqueMap.has(key)) {
-        uniqueMap.set(key, type); // Store first encountered type
-      }
+      console.log(`✓ ${url} (${proxies.length} proxies)`);
+    } catch (e) {
+      console.log(`✗ ${url} (failed)`);
     }
   }
   
-  // Clear existing sets
-  proxyTypes.http.clear();
-  proxyTypes.https.clear();
-  proxyTypes.socks4.clear();
-  proxyTypes.socks5.clear();
-  
-  // Rebuild with unique proxies
-  uniqueMap.forEach((type, proxy) => {
-    proxyTypes[type].add(proxy);
-  });
+  return Array.from(allProxies);
 }
 
-// ====== SAVE RESULTS ======
-function saveProxies() {
-  const now = new Date();
-  const dateStr = now.toISOString().split('T')[0];
-  const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, '-');
+function extractProxies(text, url) {
+  const proxyRegex = /(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}):(\d{2,5})/g;
+  const matches = [...text.matchAll(proxyRegex)];
   
-  // Create directories
+  // Detect protocol from URL
+  let protocol = 'http';
+  if (url.includes('socks4')) protocol = 'socks4';
+  else if (url.includes('socks5')) protocol = 'socks5';
+  else if (url.includes('https')) protocol = 'https';
+  
+  return matches.map(match => `${match[1]}:${match[2]}:${protocol}`);
+}
+
+async function testProxy(proxy) {
+  const [ip, port, protocol] = proxy.split(':');
+  
+  try {
+    let agent;
+    const proxyUrl = `${protocol}://${ip}:${port}`;
+    
+    switch(protocol) {
+      case 'socks4':
+      case 'socks5':
+        agent = new SocksProxyAgent(proxyUrl);
+        break;
+      case 'https':
+        agent = new HttpsProxyAgent(proxyUrl);
+        break;
+      default:
+        agent = new HttpsProxyAgent(`http://${ip}:${port}`);
+    }
+    
+    await new Promise((resolve, reject) => {
+      const req = https.get(TEST_URL, { agent, timeout: TEST_TIMEOUT }, res => {
+        res.on('data', () => {});
+        res.on('end', resolve);
+      });
+      req.on('error', reject);
+      req.on('timeout', () => {
+        req.destroy();
+        reject(new Error('Timeout'));
+      });
+    });
+    
+    return proxy;
+  } catch (e) {
+    return null;
+  }
+}
+
+async function testAllProxies(proxies) {
+  const results = [];
+  const batchSize = Math.ceil(proxies.length / CONCURRENT_TESTS);
+  
+  for (let i = 0; i < proxies.length; i += batchSize) {
+    const batch = proxies.slice(i, i + batchSize);
+    const batchResults = await Promise.all(batch.map(testProxy));
+    results.push(...batchResults.filter(Boolean));
+    console.log(`Tested ${Math.min(i + batchSize, proxies.length)}/${proxies.length}`);
+  }
+  
+  return results;
+}
+
+function saveResults(proxies) {
+  const now = new Date();
+  const dateStr = `${now.getDate()}-${now.getMonth()+1}-${now.getFullYear()}`;
+  
+  // Organize by type
+  proxies.forEach(proxy => {
+    const [ip, port, type] = proxy.split(':');
+    workingProxies[type].add(`${ip}:${port}`);
+  });
+  
+  // Save to files
   if (!fs.existsSync('proxies')) fs.mkdirSync('proxies');
   if (!fs.existsSync(`proxies/${dateStr}`)) fs.mkdirSync(`proxies/${dateStr}`);
   
-  // Save each proxy type
-  for (const [type, proxies] of Object.entries(proxyTypes)) {
-    const cleanProxies = [...proxies].map(p => p.split(':').slice(0, 2).join(':'));
-    const content = cleanProxies.join('\n');
-    
-    // Save latest version
+  for (const [type, list] of Object.entries(workingProxies)) {
+    const content = [...list].join('\n');
     fs.writeFileSync(`proxies/${type}.txt`, content);
-    
-    // Save timestamped archive
-    fs.writeFileSync(`proxies/${dateStr}/${type}_${timeStr}.txt`, content);
-    
-    console.log(`💾 Saved ${cleanProxies.length} ${type.toUpperCase()} proxies`);
+    fs.writeFileSync(`proxies/${dateStr}/${type}_${now.getHours()}.txt`, content);
   }
 }
+
+// ====== MAIN EXECUTION ======
+(async () => {
+  console.log('🚀 Starting proxy scraper');
+  
+  // 1. Fetch all unique proxies
+  const uniqueProxies = await fetchProxies();
+  console.log(`🔍 Found ${uniqueProxies.length} unique proxies`);
+  
+  // 2. Test all proxies
+  console.log('⚡ Testing proxies...');
+  const working = await testAllProxies(uniqueProxies);
+  console.log(`✅ Found ${working.length} working proxies`);
+  
+  // 3. Save results
+  saveResults(working);
+  
+  console.log('\n💾 Saved results:');
+  for (const [type, list] of Object.entries(workingProxies)) {
+    console.log(`${type.toUpperCase()}: ${list.size} proxies`);
+  }
+})();
