@@ -1,1 +1,30 @@
+name: Proxy Scraper
+on:
+  schedule:
+    - cron: '0 * * * *'  # हर घंटे चलेगा
+  workflow_dispatch:      # मैन्युअल रन के लिए
 
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 20
+          
+      - name: Install Dependencies
+        run: npm install axios socks-proxy-agent https-proxy-agent
+          
+      - name: Run Scraper
+        run: node scraper.js
+          
+      - name: Commit & Push Results
+        run: |
+          git config --global user.name "GitHub Bot"
+          git config --global user.email "actions@github.com"
+          git add .
+          git commit -m "Auto-Update Proxies $(date +'%d-%m-%Y %H:%M')"
+          git push
