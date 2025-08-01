@@ -6,7 +6,7 @@ import random
 import re
 import json
 from datetime import datetime
-from urllib.parse import urljoin
+import os
 
 # Configuration
 USER_AGENTS = [
@@ -17,7 +17,7 @@ USER_AGENTS = [
 TIMEOUT = 20
 MAX_RETRIES = 3
 WORKERS = 50
-DELAY = 2  # seconds between requests to avoid blocking
+DELAY = 2  # seconds between requests
 
 def get_random_headers():
     return {
@@ -67,49 +67,21 @@ def is_valid_proxy(proxy):
             continue
     return False
 
-def scrape_all_pages(base_url, page_param='page', max_pages=50):
-    proxies = set()
-    page = 1
-    
-    while page <= max_pages:
-        url = f"{base_url}?{page_param}={page}" if page > 1 else base_url
-        response = make_request(url)
-        
-        if not response:
-            break
-            
-        soup = BeautifulSoup(response.text, 'html.parser')
-        current_proxies = set()
-        
-        # Generic table scraping (adapt per site)
-        for table in soup.find_all('table'):
-            for row in table.find_all('tr'):
-                cols = row.find_all('td')
-                if len(cols) >= 2:
-                    ip = cols[0].get_text(strip=True)
-                    port = cols[1].get_text(strip=True)
-                    if re.match(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$', ip) and port.isdigit():
-                        current_proxies.add(f"{ip}:{port}")
-        
-        if not current_proxies:
-            break
-            
-        proxies.update(current_proxies)
-        print(f"Page {page}: Found {len(current_proxies)} proxies")
-        page += 1
-        time.sleep(DELAY)
-    
-    return proxies
-
-# ==============================================
-# Scrapers for all 25 websites
-# ==============================================
+# ============== ALL 25 PROXY SOURCE SCRAPERS ==============
 
 def scrape_geonix():
     proxies = set()
     try:
-        base_url = "https://free.geonix.com/en/"
-        proxies = scrape_all_pages(base_url, max_pages=50)
+        url = "https://free.geonix.com/en/"
+        response = make_request(url)
+        if response:
+            soup = BeautifulSoup(response.text, 'html.parser')
+            for row in soup.select('table#proxy-list tbody tr'):
+                cols = row.find_all('td')
+                if len(cols) >= 2:
+                    ip = cols[0].text.strip()
+                    port = cols[1].text.strip()
+                    proxies.add(f"{ip}:{port}")
     except Exception as e:
         print(f"Geonix error: {e}")
     return proxies
@@ -117,8 +89,17 @@ def scrape_geonix():
 def scrape_proxybros():
     proxies = set()
     try:
-        base_url = "https://proxybros.com/free-proxy-list/"
-        proxies = scrape_all_pages(base_url, max_pages=50)
+        for page in range(1, 6):
+            url = f"https://proxybros.com/free-proxy-list/page/{page}/" if page > 1 else "https://proxybros.com/free-proxy-list/"
+            response = make_request(url)
+            if response:
+                soup = BeautifulSoup(response.text, 'html.parser')
+                for row in soup.select('table.proxies-table tbody tr'):
+                    cols = row.find_all('td')
+                    if len(cols) >= 2:
+                        ip = cols[0].text.strip()
+                        port = cols[1].text.strip()
+                        proxies.add(f"{ip}:{port}")
     except Exception as e:
         print(f"Proxybros error: {e}")
     return proxies
@@ -160,8 +141,16 @@ def scrape_proxydb():
 def scrape_proxiware():
     proxies = set()
     try:
-        base_url = "https://proxiware.com/free-proxy-list"
-        proxies = scrape_all_pages(base_url, max_pages=50)
+        url = "https://proxiware.com/free-proxy-list"
+        response = make_request(url)
+        if response:
+            soup = BeautifulSoup(response.text, 'html.parser')
+            for row in soup.select('table#proxy-list tbody tr'):
+                cols = row.find_all('td')
+                if len(cols) >= 2:
+                    ip = cols[0].text.strip()
+                    port = cols[1].text.strip()
+                    proxies.add(f"{ip}:{port}")
     except Exception as e:
         print(f"Proxiware error: {e}")
     return proxies
@@ -169,8 +158,16 @@ def scrape_proxiware():
 def scrape_fineproxy():
     proxies = set()
     try:
-        base_url = "https://fineproxy.org/free-proxy/"
-        proxies = scrape_all_pages(base_url, max_pages=50)
+        url = "https://fineproxy.org/free-proxy/"
+        response = make_request(url)
+        if response:
+            soup = BeautifulSoup(response.text, 'html.parser')
+            for row in soup.select('table.proxy-list tbody tr'):
+                cols = row.find_all('td')
+                if len(cols) >= 2:
+                    ip = cols[0].text.strip()
+                    port = cols[1].text.strip()
+                    proxies.add(f"{ip}:{port}")
     except Exception as e:
         print(f"Fineproxy error: {e}")
     return proxies
@@ -178,8 +175,16 @@ def scrape_fineproxy():
 def scrape_proxyrack():
     proxies = set()
     try:
-        base_url = "https://www.proxyrack.com/free-proxy-list/"
-        proxies = scrape_all_pages(base_url, max_pages=50)
+        url = "https://www.proxyrack.com/free-proxy-list/"
+        response = make_request(url)
+        if response:
+            soup = BeautifulSoup(response.text, 'html.parser')
+            for row in soup.select('table.proxy-table tbody tr'):
+                cols = row.find_all('td')
+                if len(cols) >= 2:
+                    ip = cols[0].text.strip()
+                    port = cols[1].text.strip()
+                    proxies.add(f"{ip}:{port}")
     except Exception as e:
         print(f"Proxyrack error: {e}")
     return proxies
@@ -187,8 +192,16 @@ def scrape_proxyrack():
 def scrape_lunaproxy():
     proxies = set()
     try:
-        base_url = "https://www.lunaproxy.com/freeproxy/index.html"
-        proxies = scrape_all_pages(base_url, max_pages=50)
+        url = "https://www.lunaproxy.com/freeproxy/index.html"
+        response = make_request(url)
+        if response:
+            soup = BeautifulSoup(response.text, 'html.parser')
+            for row in soup.select('table.proxy-list tbody tr'):
+                cols = row.find_all('td')
+                if len(cols) >= 2:
+                    ip = cols[0].text.strip()
+                    port = cols[1].text.strip()
+                    proxies.add(f"{ip}:{port}")
     except Exception as e:
         print(f"Lunaproxy error: {e}")
     return proxies
@@ -196,8 +209,16 @@ def scrape_lunaproxy():
 def scrape_proxyscrape():
     proxies = set()
     try:
-        base_url = "https://proxyscrape.com/free-proxy-list"
-        proxies = scrape_all_pages(base_url, max_pages=50)
+        url = "https://proxyscrape.com/free-proxy-list"
+        response = make_request(url)
+        if response:
+            soup = BeautifulSoup(response.text, 'html.parser')
+            for row in soup.select('table.table tbody tr'):
+                cols = row.find_all('td')
+                if len(cols) >= 2:
+                    ip = cols[0].text.strip()
+                    port = cols[1].text.strip()
+                    proxies.add(f"{ip}:{port}")
     except Exception as e:
         print(f"Proxyscrape error: {e}")
     return proxies
@@ -205,8 +226,16 @@ def scrape_proxyscrape():
 def scrape_free_proxy_list():
     proxies = set()
     try:
-        base_url = "https://free-proxy-list.net/en/socks-proxy.html"
-        proxies = scrape_all_pages(base_url, max_pages=50)
+        url = "https://free-proxy-list.net/en/socks-proxy.html"
+        response = make_request(url)
+        if response:
+            soup = BeautifulSoup(response.text, 'html.parser')
+            for row in soup.select('table#proxylisttable tbody tr'):
+                cols = row.find_all('td')
+                if len(cols) >= 2:
+                    ip = cols[0].text.strip()
+                    port = cols[1].text.strip()
+                    proxies.add(f"{ip}:{port}")
     except Exception as e:
         print(f"Free-proxy-list error: {e}")
     return proxies
@@ -240,8 +269,16 @@ def scrape_proxy_list_download_api():
 def scrape_freeproxy_world():
     proxies = set()
     try:
-        base_url = "https://www.freeproxy.world/"
-        proxies = scrape_all_pages(base_url, max_pages=50)
+        url = "https://www.freeproxy.world/"
+        response = make_request(url)
+        if response:
+            soup = BeautifulSoup(response.text, 'html.parser')
+            for row in soup.select('table.table tbody tr'):
+                cols = row.find_all('td')
+                if len(cols) >= 2:
+                    ip = cols[0].text.strip()
+                    port = cols[1].text.strip()
+                    proxies.add(f"{ip}:{port}")
     except Exception as e:
         print(f"Freeproxy.world error: {e}")
     return proxies
@@ -249,8 +286,16 @@ def scrape_freeproxy_world():
 def scrape_proxycompass():
     proxies = set()
     try:
-        base_url = "https://proxycompass.com/free-proxy/"
-        proxies = scrape_all_pages(base_url, max_pages=50)
+        url = "https://proxycompass.com/free-proxy/"
+        response = make_request(url)
+        if response:
+            soup = BeautifulSoup(response.text, 'html.parser')
+            for row in soup.select('table.proxy-list tbody tr'):
+                cols = row.find_all('td')
+                if len(cols) >= 2:
+                    ip = cols[0].text.strip()
+                    port = cols[1].text.strip()
+                    proxies.add(f"{ip}:{port}")
     except Exception as e:
         print(f"Proxycompass error: {e}")
     return proxies
@@ -258,8 +303,16 @@ def scrape_proxycompass():
 def scrape_advanced_name():
     proxies = set()
     try:
-        base_url = "https://advanced.name/freeproxy"
-        proxies = scrape_all_pages(base_url, max_pages=50)
+        url = "https://advanced.name/freeproxy"
+        response = make_request(url)
+        if response:
+            soup = BeautifulSoup(response.text, 'html.parser')
+            for row in soup.select('table.table tbody tr'):
+                cols = row.find_all('td')
+                if len(cols) >= 2:
+                    ip = cols[1].text.strip()
+                    port = cols[2].text.strip()
+                    proxies.add(f"{ip}:{port}")
     except Exception as e:
         print(f"Advanced.name error: {e}")
     return proxies
@@ -267,8 +320,15 @@ def scrape_advanced_name():
 def scrape_iplocation():
     proxies = set()
     try:
-        base_url = "https://www.iplocation.net/proxy-list"
-        proxies = scrape_all_pages(base_url, max_pages=50)
+        url = "https://www.iplocation.net/proxy-list"
+        response = make_request(url)
+        if response:
+            soup = BeautifulSoup(response.text, 'html.parser')
+            for row in soup.select('table.proxy-list tbody tr'):
+                cols = row.find_all('td')
+                if len(cols) >= 2:
+                    ip_port = cols[0].text.strip()
+                    proxies.add(ip_port)
     except Exception as e:
         print(f"Iplocation error: {e}")
     return proxies
@@ -276,8 +336,16 @@ def scrape_iplocation():
 def scrape_hidemn():
     proxies = set()
     try:
-        base_url = "https://hide.mn/en/proxy-list"
-        proxies = scrape_all_pages(base_url, max_pages=50)
+        url = "https://hide.mn/en/proxy-list"
+        response = make_request(url)
+        if response:
+            soup = BeautifulSoup(response.text, 'html.parser')
+            for row in soup.select('table.proxy-list tbody tr'):
+                cols = row.find_all('td')
+                if len(cols) >= 2:
+                    ip = cols[0].text.strip()
+                    port = cols[1].text.strip()
+                    proxies.add(f"{ip}:{port}")
     except Exception as e:
         print(f"Hidemn error: {e}")
     return proxies
@@ -285,8 +353,16 @@ def scrape_hidemn():
 def scrape_proxyelite():
     proxies = set()
     try:
-        base_url = "https://proxyelite.info/free-proxy-list"
-        proxies = scrape_all_pages(base_url, max_pages=50)
+        url = "https://proxyelite.info/free-proxy-list"
+        response = make_request(url)
+        if response:
+            soup = BeautifulSoup(response.text, 'html.parser')
+            for row in soup.select('table.proxy-list tbody tr'):
+                cols = row.find_all('td')
+                if len(cols) >= 2:
+                    ip = cols[0].text.strip()
+                    port = cols[1].text.strip()
+                    proxies.add(f"{ip}:{port}")
     except Exception as e:
         print(f"Proxyelite error: {e}")
     return proxies
@@ -294,8 +370,16 @@ def scrape_proxyelite():
 def scrape_proxy5():
     proxies = set()
     try:
-        base_url = "https://proxy5.net/free-proxy"
-        proxies = scrape_all_pages(base_url, max_pages=50)
+        url = "https://proxy5.net/free-proxy"
+        response = make_request(url)
+        if response:
+            soup = BeautifulSoup(response.text, 'html.parser')
+            for row in soup.select('table.proxy-list tbody tr'):
+                cols = row.find_all('td')
+                if len(cols) >= 2:
+                    ip = cols[0].text.strip()
+                    port = cols[1].text.strip()
+                    proxies.add(f"{ip}:{port}")
     except Exception as e:
         print(f"Proxy5 error: {e}")
     return proxies
@@ -303,8 +387,16 @@ def scrape_proxy5():
 def scrape_freeproxyupdate():
     proxies = set()
     try:
-        base_url = "https://freeproxyupdate.com/"
-        proxies = scrape_all_pages(base_url, max_pages=50)
+        url = "https://freeproxyupdate.com/"
+        response = make_request(url)
+        if response:
+            soup = BeautifulSoup(response.text, 'html.parser')
+            for row in soup.select('table.proxy-list tbody tr'):
+                cols = row.find_all('td')
+                if len(cols) >= 2:
+                    ip = cols[0].text.strip()
+                    port = cols[1].text.strip()
+                    proxies.add(f"{ip}:{port}")
     except Exception as e:
         print(f"Freeproxyupdate error: {e}")
     return proxies
@@ -312,8 +404,16 @@ def scrape_freeproxyupdate():
 def scrape_vpnside():
     proxies = set()
     try:
-        base_url = "https://www.vpnside.com/proxy/list/"
-        proxies = scrape_all_pages(base_url, max_pages=50)
+        url = "https://www.vpnside.com/proxy/list/"
+        response = make_request(url)
+        if response:
+            soup = BeautifulSoup(response.text, 'html.parser')
+            for row in soup.select('table.proxy-list tbody tr'):
+                cols = row.find_all('td')
+                if len(cols) >= 2:
+                    ip = cols[0].text.strip()
+                    port = cols[1].text.strip()
+                    proxies.add(f"{ip}:{port}")
     except Exception as e:
         print(f"Vpnside error: {e}")
     return proxies
@@ -321,8 +421,16 @@ def scrape_vpnside():
 def scrape_ditatompel():
     proxies = set()
     try:
-        base_url = "https://www.ditatompel.com/proxy"
-        proxies = scrape_all_pages(base_url, max_pages=50)
+        url = "https://www.ditatompel.com/proxy"
+        response = make_request(url)
+        if response:
+            soup = BeautifulSoup(response.text, 'html.parser')
+            for row in soup.select('table.proxy-list tbody tr'):
+                cols = row.find_all('td')
+                if len(cols) >= 2:
+                    ip = cols[0].text.strip()
+                    port = cols[1].text.strip()
+                    proxies.add(f"{ip}:{port}")
     except Exception as e:
         print(f"Ditatompel error: {e}")
     return proxies
@@ -330,8 +438,16 @@ def scrape_ditatompel():
 def scrape_hideip():
     proxies = set()
     try:
-        base_url = "https://hideip.me/en/proxy/"
-        proxies = scrape_all_pages(base_url, max_pages=50)
+        url = "https://hideip.me/en/proxy/"
+        response = make_request(url)
+        if response:
+            soup = BeautifulSoup(response.text, 'html.parser')
+            for row in soup.select('table.proxy-list tbody tr'):
+                cols = row.find_all('td')
+                if len(cols) >= 2:
+                    ip = cols[0].text.strip()
+                    port = cols[1].text.strip()
+                    proxies.add(f"{ip}:{port}")
     except Exception as e:
         print(f"Hideip error: {e}")
     return proxies
@@ -339,8 +455,16 @@ def scrape_hideip():
 def scrape_proxyhub():
     proxies = set()
     try:
-        base_url = "https://proxyhub.me/en/all-https-proxy-list.html"
-        proxies = scrape_all_pages(base_url, max_pages=50)
+        url = "https://proxyhub.me/en/all-https-proxy-list.html"
+        response = make_request(url)
+        if response:
+            soup = BeautifulSoup(response.text, 'html.parser')
+            for row in soup.select('table.proxy-list tbody tr'):
+                cols = row.find_all('td')
+                if len(cols) >= 2:
+                    ip = cols[0].text.strip()
+                    port = cols[1].text.strip()
+                    proxies.add(f"{ip}:{port}")
     except Exception as e:
         print(f"Proxyhub error: {e}")
     return proxies
@@ -348,8 +472,16 @@ def scrape_proxyhub():
 def scrape_proxysharp():
     proxies = set()
     try:
-        base_url = "https://www.proxysharp.com/proxies/"
-        proxies = scrape_all_pages(base_url, max_pages=50)
+        url = "https://www.proxysharp.com/proxies/"
+        response = make_request(url)
+        if response:
+            soup = BeautifulSoup(response.text, 'html.parser')
+            for row in soup.select('table.proxy-list tbody tr'):
+                cols = row.find_all('td')
+                if len(cols) >= 2:
+                    ip = cols[0].text.strip()
+                    port = cols[1].text.strip()
+                    proxies.add(f"{ip}:{port}")
     except Exception as e:
         print(f"Proxysharp error: {e}")
     return proxies
@@ -357,8 +489,16 @@ def scrape_proxysharp():
 def scrape_proxylistplus():
     proxies = set()
     try:
-        base_url = "https://list.proxylistplus.com/"
-        proxies = scrape_all_pages(base_url, max_pages=50)
+        url = "https://list.proxylistplus.com/"
+        response = make_request(url)
+        if response:
+            soup = BeautifulSoup(response.text, 'html.parser')
+            for row in soup.select('table.proxy-list tbody tr'):
+                cols = row.find_all('td')
+                if len(cols) >= 2:
+                    ip = cols[0].text.strip()
+                    port = cols[1].text.strip()
+                    proxies.add(f"{ip}:{port}")
     except Exception as e:
         print(f"Proxylistplus error: {e}")
     return proxies
@@ -366,8 +506,16 @@ def scrape_proxylistplus():
 def scrape_openproxylist():
     proxies = set()
     try:
-        base_url = "https://openproxylist.com/proxy/"
-        proxies = scrape_all_pages(base_url, max_pages=50)
+        url = "https://openproxylist.com/proxy/"
+        response = make_request(url)
+        if response:
+            soup = BeautifulSoup(response.text, 'html.parser')
+            for row in soup.select('table.proxy-list tbody tr'):
+                cols = row.find_all('td')
+                if len(cols) >= 2:
+                    ip = cols[0].text.strip()
+                    port = cols[1].text.strip()
+                    proxies.add(f"{ip}:{port}")
     except Exception as e:
         print(f"Openproxylist error: {e}")
     return proxies
@@ -375,15 +523,25 @@ def scrape_openproxylist():
 def scrape_free_proxy_cz():
     proxies = set()
     try:
-        base_url = "http://free-proxy.cz/en/"
-        proxies = scrape_all_pages(base_url, max_pages=50)
+        url = "http://free-proxy.cz/en/"
+        response = make_request(url)
+        if response:
+            soup = BeautifulSoup(response.text, 'html.parser')
+            for row in soup.select('table#proxy_list tbody tr'):
+                cols = row.find_all('td')
+                if len(cols) >= 2:
+                    ip_script = cols[0].find('script')
+                    if ip_script:
+                        ip = re.search(r'decode\("([^"]+)"\)', ip_script.text)
+                        if ip:
+                            ip = ip.group(1)
+                            port = cols[1].text.strip()
+                            proxies.add(f"{ip}:{port}")
     except Exception as e:
         print(f"Free-proxy.cz error: {e}")
     return proxies
 
-# ==============================================
-# Main scraping and validation functions
-# ==============================================
+# ============== MAIN FUNCTIONS ==============
 
 def scrape_all_sites():
     scrapers = [
@@ -448,12 +606,19 @@ def save_results(proxies):
     timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
     filename = f"working_proxies_{timestamp}.txt"
     
+    # Save timestamped version
     with open(filename, 'w') as f:
         f.write(f"# Last updated: {timestamp.replace('_', ' ')}\n")
         f.write(f"# Total working proxies: {len(proxies)}\n\n")
         f.write("\n".join(proxies))
     
-    print(f"\nResults saved to {filename}")
+    # Save static version for GitHub Actions
+    with open("working_proxies.txt", 'w') as f:
+        f.write(f"# Last updated: {timestamp.replace('_', ' ')}\n")
+        f.write(f"# Total working proxies: {len(proxies)}\n\n")
+        f.write("\n".join(proxies))
+    
+    print(f"\nResults saved to {filename} and working_proxies.txt")
 
 def main():
     print("Starting comprehensive proxy scraping...")
