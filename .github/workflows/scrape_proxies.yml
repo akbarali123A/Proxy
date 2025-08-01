@@ -2,6 +2,40 @@ name: Scrape Proxies
 
 on:
   schedule:
+    - cron: '0 * * * *'  # Runs every hour
+  workflow_dispatch:     # Allows manual triggering
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install requests beautifulsoup4
+        
+    - name: Run proxy scraper
+      run: python proxy_scraper.py
+      
+    - name: Commit and push changes
+      run: |
+        git config --global user.name "GitHub Actions"
+        git config --global user.email "actions@github.com"
+        git add working_proxies.txt
+        git commit -m "Update working proxies [skip ci]"
+        git push: Scrape Proxies
+
+on:
+  schedule:
     - cron: '0 */3 * * *'  # Runs every hour
   workflow_dispatch:     # Allows manual triggering
 
