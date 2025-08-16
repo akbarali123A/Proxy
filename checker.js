@@ -1,7 +1,7 @@
 // Load the working proxies from GitHub
 async function loadProxies() {
     try {
-        const response = await fetch('https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO_NAME/main/working_proxies.txt');
+        const response = await fetch('https://raw.githubusercontent.com/akbarali123A/Proxy/main/working_proxies.txt');
         if (!response.ok) throw new Error('Failed to load proxies');
         const text = await response.text();
         const proxies = text.split('\n').filter(line => line.trim());
@@ -19,7 +19,7 @@ async function loadProxies() {
         });
         
         // Update last checked time
-        const lastChecked = await fetch('https://api.github.com/repos/YOUR_USERNAME/YOUR_REPO_NAME/commits?path=working_proxies.txt&per_page=1');
+        const lastChecked = await fetch('https://api.github.com/repos/akbarali123A/Proxy/commits?path=working_proxies.txt&per_page=1');
         const data = await lastChecked.json();
         if (data.length > 0) {
             const date = new Date(data[0].commit.committer.date);
