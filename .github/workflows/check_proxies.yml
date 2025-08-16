@@ -33,10 +33,12 @@ jobs:
           try {
             // Fetch proxy lists from GitHub
             const sources = [
-              'https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/http.txt',
-              'https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/socks4.txt',
-              'https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/socks5.txt'
+              'https://raw.githubusercontent.com/akbarali123A/proxy_scraper/refs/heads/main/http_proxies.txt',
+              'https://raw.githubusercontent.com/akbarali123A/proxy_scraper/refs/heads/main/https_proxies.txt',
+              'https://raw.githubusercontent.com/akbarali123A/proxy_scraper/refs/heads/main/socks4_proxies.txt'
+           'https://raw.githubusercontent.com/akbarali123A/proxy_scraper/refs/heads/main/socks5_proxies.txt'
             ];
+          
             
             let allProxies = [];
             
