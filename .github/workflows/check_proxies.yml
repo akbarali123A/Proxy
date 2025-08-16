@@ -1,0 +1,117 @@
+name: Proxy Checker
+
+on:
+  schedule:
+    - cron: '0 7 * * *'  # 7 AM daily
+    - cron: '0 19 * * *' # 7 PM daily
+  workflow_dispatch: # Allow manual runs
+
+jobs:
+  check-proxies:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+      
+    - name: Set up Node.js
+      uses: actions/setup-node@v2
+      with:
+        node-version: '14'
+        
+    - name: Install dependencies
+      run: npm install axios puppeteer
+      
+    - name: Run proxy checker
+      run: |
+        node -e "
+        const { default: axios } = require('axios');
+        const puppeteer = require('puppeteer');
+        const fs = require('fs');
+        
+        (async () => {
+          try {
+            // Fetch proxy lists from GitHub
+            const sources = [
+              'https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/http.txt',
+              'https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/socks4.txt',
+              'https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/socks5.txt'
+            ];
+            
+            let allProxies = [];
+            
+            for (const source of sources) {
+              const response = await axios.get(source);
+              const proxies = response.data.split('\n')
+                .map(line => line.trim())
+                .filter(line => line && line.includes(':'));
+              allProxies = [...allProxies, ...proxies];
+            }
+            
+            // Remove duplicates
+            allProxies = [...new Set(allProxies)];
+            
+            console.log(`Found ${allProxies.length} proxies to check`);
+            
+            // Check proxies
+            const browser = await puppeteer.launch();
+            const workingProxies = [];
+            const testUrl = 'https://www.google.com';
+            const timeout = 5000;
+            
+            for (const proxy of allProxies.slice(0, 1000)) { // Limit to 1000 for demo
+              try {
+                const [ip, port] = proxy.split(':');
+                const page = await browser.newPage();
+                
+                await page.setExtraHTTPHeaders({
+                  'Proxy-Authorization': 'Basic ' + Buffer.from('username:password').toString('base64')
+                });
+                
+                await page.goto(testUrl, {
+                  timeout,
+                  waitUntil: 'domcontentloaded',
+                  proxy: {
+                    server: `${ip}:${port}`,
+                    username: 'username',
+                    password: 'password'
+                  }
+                });
+                
+                workingProxies.push(proxy);
+                console.log(`Working: ${proxy}`);
+                await page.close();
+              } catch (err) {
+                // Proxy failed
+              }
+            }
+            
+            await browser.close();
+            
+            console.log(`Found ${workingProxies.length} working proxies`);
+            
+            // Save working proxies
+            fs.writeFileSync('working_proxies.txt', workingProxies.join('\n'));
+            
+            // Commit and push changes
+            const { execSync } = require('child_process');
+            execSync('git config --global user.name "GitHub Actions"');
+            execSync('git config --global user.email "actions@github.com"');
+            execSync('git add working_proxies.txt');
+            execSync('git commit -m "Update working proxies"');
+            execSync('git push');
+            
+          } catch (error) {
+            console.error('Error:', error);
+            process.exit(1);
+          }
+        })();
+        "
+        
+    - name: Commit and push changes
+      run: |
+        git config --global user.name "GitHub Actions"
+        git config --global user.email "actions@github.com"
+        git add working_proxies.txt
+        git commit -m "Update working proxies"
+        git push
