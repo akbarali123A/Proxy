@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GitHub Proxy Checker</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background: #f9f9f9;
+        }
+        .proxy-list {
+            max-height: 300px;
+            overflow-y: auto;
+            margin-top: 10px;
+            padding: 10px;
+            background: white;
+            border: 1px solid #eee;
+        }
+        .proxy-item {
+            padding: 5px;
+            border-bottom: 1px solid #eee;
+            font-family: monospace;
+        }
+        .last-run {
+            margin-top: 20px;
+            font-style: italic;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>GitHub Proxy Checker</h1>
+        <p>This tool automatically checks proxies twice daily (7 AM & 7 PM) and updates the results below.</p>
+        
+        <div class="result">
+            <h2>Working Proxies</h2>
+            <div id="working-count">0</div> proxies currently working
+            <div class="proxy-list" id="proxy-list"></div>
+        </div>
+        
+        <div class="last-run">
+            Last checked: <span id="last-checked">Not checked yet</span>
+        </div>
+    </div>
+
+    <script src="checker.js"></script>
+</body>
+</html>
